@@ -24,6 +24,7 @@ static NSString *const CallKeepProviderReset = @"CallKeepProviderReset";
 static NSString *const CallKeepCheckReachability = @"CallKeepCheckReachability";
 static NSString *const CallKeepDidLoadWithEvents = @"CallKeepDidLoadWithEvents";
 static NSString *const CallKeepPushKitToken = @"CallKeepPushKitToken";
+static NSString *const CallKeepPushKitReceivedNotification = @"CallKeepPushKitReceivedNotification";
 
 @implementation CallKeep
 {
@@ -237,37 +238,55 @@ static CXProvider* sharedProvider;
     }
     */
 
-    NSDictionary *dic = payload.dictionaryPayload;
-
-    if (dic[@"aps"] != nil) {
-        NSLog(@"Do not use the 'alert' format for push type %@.", payload.type);
-        if(completion != nil) {
-            completion();
-        }
-        return;
-    }
-
-    NSString *uuid = dic[@"uuid"];
-    NSString *callerId = dic[@"caller_id"];
-    NSString *callerName = dic[@"caller_name"];
-    BOOL hasVideo = [dic[@"has_video"] boolValue];
-    NSString *callerIdType = dic[@"caller_id_type"];
-   
-
-    if( uuid == nil) {
-        uuid = [self createUUID];
-    }
+    NSDictionary *dic = payload.dictionaryPayload[@"data"][@"map"][@"data"][@"map"];
+//
+//    if (dic[@"aps"] != nil) {
+//        NSLog(@"Do not use the 'alert' format for push type %@.", payload.type);
+//        if(completion != nil) {
+//            completion();
+//        }
+//        return;
+//    }
+//
+//    NSString *uuid = dic[@"uuid"];
+//    NSString *callerId = dic[@"caller_id"];
+//    NSString *callerName = dic[@"caller_name"];
+//    BOOL hasVideo = [dic[@"has_video"] boolValue];
+//    NSString *callerIdType = dic[@"caller_id_type"];
+//
+//
+//    if( uuid == nil) {
+//        uuid = [self createUUID];
+//    }
+    
+    // Sua theo data của Stringee
+    NSString *callId = dic[@"callId"] != nil ? dic[@"callId"] : @"";
+    int serial = dic[@"serial"] != nil ? [(NSNumber *)dic[@"serial"] intValue] : 0;
+    NSString *callStatus = dic[@"callStatus"] != nil ? dic[@"callStatus"] : @"";
+    NSString *fromAlias = dic[@"from"][@"map"][@"alias"] != nil ? dic[@"from"][@"map"][@"alias"] : @"";
+    NSString *fromNumber = dic[@"from"][@"map"][@"number"] != nil ? dic[@"from"][@"map"][@"number"] : @"";
+    NSString *callerName = ![fromAlias isEqual:@""] ? fromAlias : (![fromNumber isEqual:@""] ? fromNumber : @"Connecting...");
+    NSString *uuid = [self createUUID];
+    
+    NSMutableDictionary *parseData = [NSMutableDictionary new];
+    [parseData setValue:callId forKey:@"callId"];
+    [parseData setValue:@(serial) forKey:@"serial"];
+    [parseData setValue:callStatus forKey:@"callStatus"];
+    [parseData setValue:uuid forKey:@"uuid"];
 
     //NSDictionary *extra = payload.dictionaryPayload[@"extra"];
 
     [CallKeep reportNewIncomingCall:uuid
-                             handle:callerId
-                         handleType:callerIdType
-                           hasVideo:hasVideo
+                             handle:fromNumber
+                         handleType:@"generic"
+                           hasVideo:false
                 localizedCallerName:callerName
                         fromPushKit:YES
-                            payload:dic
+                            payload:parseData
               withCompletionHandler:completion];
+
+    // Ban them su kien khi nhan duoc push
+    [self sendEventWithNameWrapper:CallKeepPushKitReceivedNotification body:parseData];
 }
 
 - (void)pushRegistry:(PKPushRegistry *)registry didReceiveIncomingPushWithPayload:(PKPushPayload *)payload forType:(NSString *)type {
